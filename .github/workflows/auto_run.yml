@@ -1,0 +1,50 @@
+name: Run Mt_20 & Mt_21
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Runs daily at 02:10 Asia/Dhaka (UTC+06) => 20:10 UTC previous day
+    - cron: "10 20 * * *"
+
+jobs:
+  run-both:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pandas gspread oauth2client openpyxl
+
+      - name: Write Google credentials.json
+        # Put your full Service Account JSON in repo secrets as GCP_SA_JSON
+        run: |
+          echo "${{ secrets.GCP_SA_JSON }}" > credentials.json
+
+      # ——— Optional: export Odoo creds as env vars if your scripts read them ———
+      # - name: Export Odoo env (optional)
+      #   run: |
+      #     echo "ODOO_URL=${{ secrets.ODOO_URL }}" >> $GITHUB_ENV
+      #     echo "ODOO_DB=${{ secrets.ODOO_DB }}" >> $GITHUB_ENV
+      #     echo "ODOO_USERNAME=${{ secrets.ODOO_USERNAME }}" >> $GITHUB_ENV
+      #     echo "ODOO_PASSWORD=${{ secrets.ODOO_PASSWORD }}" >> $GITHUB_ENV
+
+      - name: Run Mt_20.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python Mt_20.py
+
+      - name: Run Mt_21.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: |
+          python Mt_21.py
