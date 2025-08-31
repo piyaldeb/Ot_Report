@@ -24,12 +24,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests pandas gspread oauth2client openpyxl
 
-      - name: Write Google credentials.json
-        # Put your full Service Account JSON in repo secrets as GCP_SA_JSON
+      - name: Write Google credentials.json (Base64 decode)
+        shell: bash
         run: |
-          echo "${{ secrets.GCP_SA_JSON }}" > credentials.json
+          echo "${{ secrets.GCP_SA_JSON }}" | base64 -d > credentials.json
 
-      # ——— Optional: export Odoo creds as env vars if your scripts read them ———
+      # Optional: export Odoo creds as env vars if your scripts read them
       # - name: Export Odoo env (optional)
       #   run: |
       #     echo "ODOO_URL=${{ secrets.ODOO_URL }}" >> $GITHUB_ENV
@@ -40,11 +40,9 @@ jobs:
       - name: Run Mt_20.py
         env:
           PYTHONUNBUFFERED: "1"
-        run: |
-          python Mt_20.py
+        run: python Mt_20.py
 
       - name: Run Mt_21.py
         env:
           PYTHONUNBUFFERED: "1"
-        run: |
-          python Mt_21.py
+        run: python Mt_21.py
