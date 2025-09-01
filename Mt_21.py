@@ -229,11 +229,15 @@ def read_second_tab(xlsx_path: str) -> pd.DataFrame:
 
 def paste_to_google_sheet(df: pd.DataFrame):
     """
-    Clears entire Sheet2 and pastes the DataFrame (header + rows).
+    Clears the sheet and pastes up to 47 rows of the DataFrame,
+    then adds formulas in row 51 (odd row sum) and 52 (even row sum) dynamically.
     """
+    # Limit to first 47 rows
+    df = df.head(47)
+    
     # Replace NaN with ""
     df = df.astype(object).where(pd.notnull(df), "")
-
+    
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
@@ -246,11 +250,31 @@ def paste_to_google_sheet(df: pd.DataFrame):
 
     # Prepare values
     values = [list(df.columns)] + df.values.tolist()
-
-    # Compute range end (A1-style). We can just use update without range; but let's be explicit.
-    # gspread allows .update with just the values to fill from A1.
+    
+    # Update data starting at A1
     ws.update("A1", values, value_input_option="RAW")
-    print("✅ Pasted to Google Sheet → Sheet2")
+    
+    print(f"✅ Pasted up to 47 rows to Google Sheet → {SHEET_NAME}")
+
+    # Apply formulas in row 51 (odd sum) and row 52 (even sum) starting from column D
+    num_cols = df.shape[1]
+    start_col_index = 3  # D = index 3 (0-based)
+    
+    formulas_row_51 = []
+    formulas_row_52 = []
+    
+    for col_idx in range(start_col_index, num_cols):
+        col_letter = chr(ord('A') + col_idx)
+        # Odd row sum (C7:C47 style)
+        formulas_row_51.append(f"=SUMPRODUCT((MOD(ROW({col_letter}7:{col_letter}47),2)=1)*{col_letter}7:{col_letter}47)")
+        # Even row sum (C8:C48 style)
+        formulas_row_52.append(f"=SUMPRODUCT((MOD(ROW({col_letter}8:{col_letter}48),2)=0)*{col_letter}8:{col_letter}48)")
+    
+    # Update formulas in row 51 and 52
+    if formulas_row_51:
+        ws.update(f"D51:{chr(ord('D') + len(formulas_row_51)-1)}51", [formulas_row_51], value_input_option="USER_ENTERED")
+        ws.update(f"D52:{chr(ord('D') + len(formulas_row_52)-1)}52", [formulas_row_52], value_input_option="USER_ENTERED")
+        print("✅ Applied SUMPRODUCT formulas in rows 51 (odd) and 52 (even)")
 
 
 def main():
