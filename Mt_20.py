@@ -262,14 +262,8 @@ def format_row4_as_date(ws, num_cols):
 def paste_to_google_sheet(df: pd.DataFrame):
     df = df.head(47)  # limit rows
 
-    # Convert row 4 to datetime, keep actual datetime, replace NaT with None
-    df.iloc[3] = pd.to_datetime(df.iloc[3], errors='coerce')
-    df.iloc[3] = df.iloc[3].apply(lambda x: x if pd.notnull(x) else None)
-
-    # Replace infinite values in the whole DataFrame
-    df = df.replace([float('inf'), float('-inf')], None)
-    # Replace remaining NaNs with None to avoid JSON errors
-    df = df.where(pd.notnull(df), None)
+    # Convert row 4 (index 3) to string in dd-mm-yyyy format, replace NaT with empty string
+    df.iloc[3] = pd.to_datetime(df.iloc[3], errors='coerce').dt.strftime('%d-%b-%y').fillna("")
 
     # Authorize Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -295,30 +289,23 @@ def paste_to_google_sheet(df: pd.DataFrame):
             result = chr(65 + rem) + result
         return result
 
-    formulas_row_51 = [
-        f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)"
-        for c in range(start_col_idx, num_cols)
-    ]
-    formulas_row_52 = [
-        f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)"
-        for c in range(start_col_idx, num_cols)
-    ]
+    formulas_row_51 = [f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)" 
+                       for c in range(start_col_idx, num_cols)]
+    formulas_row_52 = [f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)" 
+                       for c in range(start_col_idx, num_cols)]
 
     if formulas_row_51:
-        ws.update(
-            values=[formulas_row_51],
-            range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51) - 1)}51",
-            value_input_option="USER_ENTERED"
-        )
-        ws.update(
-            values=[formulas_row_52],
-            range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52) - 1)}52",
-            value_input_option="USER_ENTERED"
-        )
+        ws.update(values=[formulas_row_51], 
+                  range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51",
+                  value_input_option="USER_ENTERED")
+        ws.update(values=[formulas_row_52], 
+                  range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52",
+                  value_input_option="USER_ENTERED")
         print("✅ Applied SUMPRODUCT formulas in rows 51 and 52")
 
-    # Format row 4 as date
+    # Format row 4 as date in Google Sheets (optional)
     format_row4_as_date(ws, num_cols)
+
 
 
 
