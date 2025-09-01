@@ -227,7 +227,7 @@ def read_second_tab(xlsx_path: str) -> pd.DataFrame:
     return df
 
 
-from gspread_formatting import set_number_format, NumberFormat
+
 
 from gspread_formatting import format_cell_range, CellFormat, NumberFormat
 
