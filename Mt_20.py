@@ -2,7 +2,7 @@ import os
 import json
 import re
 from datetime import datetime
-
+import string
 import requests
 import pandas as pd
 
@@ -227,17 +227,13 @@ def read_second_tab(xlsx_path: str) -> pd.DataFrame:
     return df
 
 
+
+
 def paste_to_google_sheet(df: pd.DataFrame):
-    """
-    Clears the sheet and pastes up to 47 rows of the DataFrame,
-    then adds formulas in row 51 (odd row sum) and 52 (even row sum) dynamically.
-    """
     # Limit to first 47 rows
     df = df.head(47)
-    
-    # Replace NaN with ""
     df = df.astype(object).where(pd.notnull(df), "")
-    
+
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
@@ -248,32 +244,33 @@ def paste_to_google_sheet(df: pd.DataFrame):
     # Clear sheet
     ws.clear()
 
-    # Prepare values
+    # Paste DataFrame
     values = [list(df.columns)] + df.values.tolist()
-    
-    # Update data starting at A1
-    ws.update("A1", values, value_input_option="RAW")
-    
+    ws.update(values=values, range_name="A1", value_input_option="RAW")
     print(f"✅ Pasted up to 47 rows to Google Sheet → {SHEET_NAME}")
 
-    # Apply formulas in row 51 (odd sum) and row 52 (even sum) starting from column D
+    # Apply formulas in row 51 and 52 starting from D
+    start_col_idx = 3  # D=3 (0-based)
     num_cols = df.shape[1]
-    start_col_index = 3  # D = index 3 (0-based)
-    
+
+    def col_letter(idx):
+        """Convert 0-based index to Excel-style letter, supports >Z."""
+        result = ""
+        while idx >= 0:
+            result = chr(idx % 26 + ord('A')) + result
+            idx = idx // 26 - 1
+        return result
+
     formulas_row_51 = []
     formulas_row_52 = []
-    
-    for col_idx in range(start_col_index, num_cols):
-        col_letter = chr(ord('A') + col_idx)
-        # Odd row sum (C7:C47 style)
-        formulas_row_51.append(f"=SUMPRODUCT((MOD(ROW({col_letter}7:{col_letter}47),2)=1)*{col_letter}7:{col_letter}47)")
-        # Even row sum (C8:C48 style)
-        formulas_row_52.append(f"=SUMPRODUCT((MOD(ROW({col_letter}8:{col_letter}48),2)=0)*{col_letter}8:{col_letter}48)")
-    
-    # Update formulas in row 51 and 52
+    for col_idx in range(start_col_idx, num_cols):
+        letter = col_letter(col_idx)
+        formulas_row_51.append(f"=SUMPRODUCT((MOD(ROW({letter}7:{letter}47),2)=1)*{letter}7:{letter}47)")
+        formulas_row_52.append(f"=SUMPRODUCT((MOD(ROW({letter}8:{letter}48),2)=0)*{letter}8:{letter}48)")
+
     if formulas_row_51:
-        ws.update(f"D51:{chr(ord('D') + len(formulas_row_51)-1)}51", [formulas_row_51], value_input_option="USER_ENTERED")
-        ws.update(f"D52:{chr(ord('D') + len(formulas_row_52)-1)}52", [formulas_row_52], value_input_option="USER_ENTERED")
+        ws.update(values=[formulas_row_51], range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51", value_input_option="USER_ENTERED")
+        ws.update(values=[formulas_row_52], range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52", value_input_option="USER_ENTERED")
         print("✅ Applied SUMPRODUCT formulas in rows 51 (odd) and 52 (even)")
 
 
