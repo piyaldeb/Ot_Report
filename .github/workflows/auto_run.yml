@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pandas gspread oauth2client openpyxl
+          pip install requests pandas gspread oauth2client openpyxl gspread-formatting
 
       - name: Write Google credentials.json (Base64 decode)
         shell: bash

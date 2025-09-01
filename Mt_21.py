@@ -226,6 +226,25 @@ def read_second_tab(xlsx_path: str) -> pd.DataFrame:
     print(f"✅ Loaded 2nd tab into DataFrame: {df.shape}")
     return df
 
+from gspread_formatting import set_number_format, NumberFormat
+
+def format_row4_as_date(ws, num_cols):
+    """
+    Format row 4 from column D to last column with data as date dd-mm-yyyy.
+    """
+    start_col_idx = 3  # D=0-based index 3
+
+    for col_idx in range(start_col_idx, num_cols):
+        col_letter = ""
+        idx = col_idx
+        while idx >= 0:
+            col_letter = chr(idx % 26 + ord('A')) + col_letter
+            idx = idx // 26 - 1
+
+        cell_range = f"{col_letter}4"
+        set_number_format(ws, cell_range, NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
+
+    print(f"✅ Formatted row 4 from D to last column ({col_letter}) as dd-mm-yyyy")
 
 import string
 
@@ -260,6 +279,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
             result = chr(idx % 26 + ord('A')) + result
             idx = idx // 26 - 1
         return result
+    
 
     formulas_row_51 = []
     formulas_row_52 = []
@@ -272,7 +292,8 @@ def paste_to_google_sheet(df: pd.DataFrame):
         ws.update(values=[formulas_row_51], range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51", value_input_option="USER_ENTERED")
         ws.update(values=[formulas_row_52], range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52", value_input_option="USER_ENTERED")
         print("✅ Applied SUMPRODUCT formulas in rows 51 (odd) and 52 (even)")
-
+    # Format row 4 as date
+    format_row4_as_date(ws, df.shape[1])
 
 def main():
     uid = login()
