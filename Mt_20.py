@@ -259,47 +259,39 @@ def format_row4_as_date(ws, num_cols):
 
 
 def paste_to_google_sheet(df: pd.DataFrame):
-    # Limit to first 47 rows
-    df = df.head(47)
-    df = df.astype(object).where(pd.notnull(df), "")
+    df = df.head(47)  # limit rows
 
-    # Convert row 4 (index 3) to datetime if possible
-    df.iloc[3] = pd.to_datetime(df.iloc[3], errors='coerce')
+    # Convert row 4 to datetime, replace NaT with empty string
+    df.iloc[3] = pd.to_datetime(df.iloc[3], errors='coerce').fillna("")
 
+    # Authorize Google Sheets
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
-
-    sh = gc.open_by_url(GOOGLE_SHEET_URL)
-    ws = sh.worksheet(SHEET_NAME)
-
-    # Clear sheet
+    ws = gc.open_by_url(GOOGLE_SHEET_URL).worksheet(SHEET_NAME)
     ws.clear()
 
-    # Paste DataFrame using USER_ENTERED so dates are recognized
+    # Send data
     values = [list(df.columns)] + df.values.tolist()
     ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
-    print(f"✅ Pasted up to 47 rows to Google Sheet → {SHEET_NAME}")
+    print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
 
-    # Apply formulas in row 51 and 52 starting from D
-    start_col_idx = 3  # D=3 (0-based)
+    # Apply formulas in rows 51 and 52
+    start_col_idx = 3
     num_cols = df.shape[1]
 
     def col_letter(idx):
-        """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
         idx += 1
         while idx > 0:
-            idx, remainder = divmod(idx - 1, 26)
-            result = chr(65 + remainder) + result
+            idx, rem = divmod(idx - 1, 26)
+            result = chr(65 + rem) + result
         return result
 
-    formulas_row_51 = []
-    formulas_row_52 = []
-    for col_idx in range(start_col_idx, num_cols):
-        letter = col_letter(col_idx)
-        formulas_row_51.append(f"=SUMPRODUCT((MOD(ROW({letter}7:{letter}47),2)=1)*{letter}7:{letter}47)")
-        formulas_row_52.append(f"=SUMPRODUCT((MOD(ROW({letter}8:{letter}48),2)=0)*{letter}8:{letter}48)")
+    formulas_row_51 = [f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)" 
+                       for c in range(start_col_idx, num_cols)]
+    formulas_row_52 = [f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)" 
+                       for c in range(start_col_idx, num_cols)]
 
     if formulas_row_51:
         ws.update(values=[formulas_row_51], 
@@ -308,10 +300,11 @@ def paste_to_google_sheet(df: pd.DataFrame):
         ws.update(values=[formulas_row_52], 
                   range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52",
                   value_input_option="USER_ENTERED")
-        print("✅ Applied SUMPRODUCT formulas in rows 51 (odd) and 52 (even)")
+        print("✅ Applied SUMPRODUCT formulas in rows 51 and 52")
 
-    # Format row 4 as date (Google Sheets number format)
-    format_row4_as_date(ws, df.shape[1])
+    # Format row 4 as date
+    format_row4_as_date(ws, num_cols)
+
 
 
 
