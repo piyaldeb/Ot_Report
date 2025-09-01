@@ -19,7 +19,7 @@ MODEL = "attendance.pdf.report"
 REPORT_BUTTON_METHOD = "action_generate_xlsx_report"
 
 REPORT_TYPE = "ot_analysis"        # e.g. "ot_analysis", "job_card"
-DATE_FROM = "2025-08-10"
+DATE_FROM = "2025-08-01"
 DATE_TO   = datetime.now().strftime("%Y-%m-%d")
 
 # Company context (kept even though we’re using category mode)
