@@ -260,28 +260,40 @@ def format_row4_as_date(ws, num_cols):
 
 
 def paste_to_google_sheet(df: pd.DataFrame):
-    df = df.head(47)  # limit rows
+    # Limit to first 47 rows
+    df = df.head(47)
 
-    # Convert row 4 (index 3) to string in dd-mm-yyyy format, replace NaT with empty string
-    df.iloc[3] = pd.to_datetime(df.iloc[3], errors='coerce').dt.strftime('%d-%b-%y').fillna("")
+    # --- Convert row 4 (index 3) to string safely ---
+    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
+    df_row4 = df_row4.dt.strftime('%d-%b-%y')              # convert Timestamps to string
+    df_row4 = df_row4.fillna("")                            # replace NaT with empty string
+    df.iloc[3] = df_row4
 
-    # Authorize Google Sheets
+    # --- Replace inf/-inf and remaining NaN in entire DataFrame ---
+    df = df.replace([float('inf'), float('-inf')], "").where(pd.notnull(df), "")
+
+    # --- Authorize Google Sheets ---
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
     ws = gc.open_by_url(GOOGLE_SHEET_URL).worksheet(SHEET_NAME)
+
+    # Clear sheet
     ws.clear()
 
-    # Send data
+    # Prepare values
     values = [list(df.columns)] + df.values.tolist()
+
+    # Update Google Sheet
     ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
     print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
 
-    # Apply formulas in rows 51 and 52
+    # --- Apply formulas in rows 51 and 52 starting from D ---
     start_col_idx = 3
     num_cols = df.shape[1]
 
     def col_letter(idx):
+        """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
         idx += 1
         while idx > 0:
@@ -289,22 +301,31 @@ def paste_to_google_sheet(df: pd.DataFrame):
             result = chr(65 + rem) + result
         return result
 
-    formulas_row_51 = [f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)" 
-                       for c in range(start_col_idx, num_cols)]
-    formulas_row_52 = [f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)" 
-                       for c in range(start_col_idx, num_cols)]
+    formulas_row_51 = [
+        f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)"
+        for c in range(start_col_idx, num_cols)
+    ]
+    formulas_row_52 = [
+        f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)"
+        for c in range(start_col_idx, num_cols)
+    ]
 
     if formulas_row_51:
-        ws.update(values=[formulas_row_51], 
-                  range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51",
-                  value_input_option="USER_ENTERED")
-        ws.update(values=[formulas_row_52], 
-                  range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52",
-                  value_input_option="USER_ENTERED")
+        ws.update(
+            values=[formulas_row_51],
+            range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51",
+            value_input_option="USER_ENTERED"
+        )
+        ws.update(
+            values=[formulas_row_52],
+            range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52",
+            value_input_option="USER_ENTERED"
+        )
         print("✅ Applied SUMPRODUCT formulas in rows 51 and 52")
 
-    # Format row 4 as date in Google Sheets (optional)
+    # --- Format row 4 as date in Google Sheets ---
     format_row4_as_date(ws, num_cols)
+
 
 
 
