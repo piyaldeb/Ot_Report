@@ -229,23 +229,28 @@ def read_second_tab(xlsx_path: str) -> pd.DataFrame:
 
 from gspread_formatting import set_number_format, NumberFormat
 
+from gspread_formatting import format_cell_range, CellFormat, NumberFormat
+
 def format_row4_as_date(ws, num_cols):
     """
     Format row 4 from column D to last column with data as date dd-mm-yyyy.
     """
     start_col_idx = 3  # D=0-based index 3
 
-    for col_idx in range(start_col_idx, num_cols):
-        col_letter = ""
-        idx = col_idx
+    def col_letter(idx):
+        result = ""
         while idx >= 0:
-            col_letter = chr(idx % 26 + ord('A')) + col_letter
+            result = chr(idx % 26 + ord('A')) + result
             idx = idx // 26 - 1
+        return result
 
-        cell_range = f"{col_letter}4"
-        set_number_format(ws, cell_range, NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
+    for col_idx in range(start_col_idx, num_cols):
+        letter = col_letter(col_idx)
+        cell_range = f"{letter}4"
+        fmt = CellFormat(numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
+        format_cell_range(ws, cell_range, fmt)
 
-    print(f"✅ Formatted row 4 from D to last column ({col_letter}) as dd-mm-yyyy")
+    print(f"✅ Formatted row 4 from D to last column ({col_letter(num_cols-1)}) as dd-mm-yyyy")
 
 
 def paste_to_google_sheet(df: pd.DataFrame):
