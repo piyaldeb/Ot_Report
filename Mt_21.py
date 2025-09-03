@@ -113,7 +113,7 @@ def web_save(uid):
                 "mode_type": "category",     # category mode per your JSON
                 "employee_id": False,
                 "mode_company_id": False,    # cleared in category mode
-                "category_id": 21,           # B-Worker
+                "category_id": 20,           # B-Worker
                 "department_id": False,
                 "company_all": "allcompany"
             }],
