@@ -179,7 +179,7 @@ def download_xlsx(uid, csrf_token, wizard_id, report_name):
         "mode_type": "category",
         "mode_company_id": False,
         "department_id": False,
-        "category_id": 20,
+        "category_id": 15,
         "employee_id": False,
         "report_type": REPORT_TYPE,
         "atten_type": False,
