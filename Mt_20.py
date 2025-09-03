@@ -1,7 +1,7 @@
 import os
 import json
 import re
-from datetime import datetime
+from datetime import datetime , timedelta
 import string
 import requests
 import pandas as pd
@@ -20,7 +20,8 @@ REPORT_BUTTON_METHOD = "action_generate_xlsx_report"
 
 REPORT_TYPE = "ot_analysis"        # e.g. "ot_analysis", "job_card"
 DATE_FROM = "2025-08-01"
-DATE_TO   = datetime.now().strftime("%Y-%m-%d")
+DATE_TO = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
 
 # Company context (kept even though we’re using category mode)
 company_id = 3   # 1 = Zipper, 3 = Metal Trims
