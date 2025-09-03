@@ -263,11 +263,14 @@ def paste_to_google_sheet(df: pd.DataFrame):
     # Limit to first 47 rows
     df = df.head(47)
 
-    # --- Convert row 4 (index 3) to string safely ---
-    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
-    df_row4 = df_row4.dt.strftime('%d-%b-%y')              # convert Timestamps to string
-    df_row4 = df_row4.fillna("")                            # replace NaT with empty string
-    df.iloc[3] = df_row4
+    # --- Convert row 4 (index 3) safely ---
+    if len(df) > 3:  # Only if 4th row exists
+        df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
+        df_row4 = df_row4.dt.strftime('%d-%b-%y')              # convert Timestamps to string
+        df_row4 = df_row4.fillna("")                            # replace NaT with empty string
+        df.iloc[3] = df_row4
+    else:
+        print("⚠️ DataFrame has fewer than 4 rows, skipping row 4 formatting.")
 
     # --- Replace inf/-inf and remaining NaN in entire DataFrame ---
     df = df.replace([float('inf'), float('-inf')], "").where(pd.notnull(df), "")
@@ -301,16 +304,16 @@ def paste_to_google_sheet(df: pd.DataFrame):
             result = chr(65 + rem) + result
         return result
 
-    formulas_row_51 = [
-        f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)"
-        for c in range(start_col_idx, num_cols)
-    ]
-    formulas_row_52 = [
-        f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)"
-        for c in range(start_col_idx, num_cols)
-    ]
+    if len(df) >= 47:  # Only apply formulas if enough rows exist
+        formulas_row_51 = [
+            f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}47),2)=1)*{col_letter(c)}7:{col_letter(c)}47)"
+            for c in range(start_col_idx, num_cols)
+        ]
+        formulas_row_52 = [
+            f"=SUMPRODUCT((MOD(ROW({col_letter(c)}8:{col_letter(c)}48),2)=0)*{col_letter(c)}8:{col_letter(c)}48)"
+            for c in range(start_col_idx, num_cols)
+        ]
 
-    if formulas_row_51:
         ws.update(
             values=[formulas_row_51],
             range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51",
@@ -322,9 +325,13 @@ def paste_to_google_sheet(df: pd.DataFrame):
             value_input_option="USER_ENTERED"
         )
         print("✅ Applied SUMPRODUCT formulas in rows 51 and 52")
+    else:
+        print("⚠️ DataFrame has fewer than 47 rows, skipping formulas in rows 51–52.")
 
-    # --- Format row 4 as date in Google Sheets ---
-    format_row4_as_date(ws, num_cols)
+    # --- Format row 4 as date in Google Sheets (only if row exists) ---
+    if len(df) > 3:
+        format_row4_as_date(ws, num_cols)
+
 
 
 
