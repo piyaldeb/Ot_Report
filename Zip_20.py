@@ -114,7 +114,7 @@ def web_save(uid):
                 "mode_type": "category",     # category mode per your JSON
                 "employee_id": False,
                 "mode_company_id": False,    # cleared in category mode
-                "category_id": 21,           # B-Worker
+                "category_id": 31,           # B-Worker
                 "department_id": False,
                 "company_all": "allcompany"
             }],
@@ -180,7 +180,7 @@ def download_xlsx(uid, csrf_token, wizard_id, report_name):
         "mode_type": "category",
         "mode_company_id": False,
         "department_id": False,
-        "category_id": 21,
+        "category_id": 31,
         "employee_id": False,
         "report_type": REPORT_TYPE,
         "atten_type": False,
