@@ -231,28 +231,28 @@ from gspread_formatting import format_cell_range, CellFormat, NumberFormat
 def format_row4_as_date(ws, num_cols):
     """
     Format row 4 from column D to the last column with data as date dd-mm-yyyy.
-    Skips empty cells to prevent errors.
+    Does it in a single API request instead of per-cell.
     """
-    start_col_idx = 3  # D = 0-based index 3
+    start_col_idx = 3  # D = index 3
 
     def col_letter(idx):
         """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
-        idx += 1  # convert 0-based to 1-based
+        idx += 1
         while idx > 0:
             idx, remainder = divmod(idx - 1, 26)
             result = chr(65 + remainder) + result
         return result
 
-    # Iterate through each cell in row 4 from D to last column
-    for col_idx in range(start_col_idx, num_cols):
-        cell = f"{col_letter(col_idx)}4"
-        # Apply date format to the single cell
-        fmt = CellFormat(numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
-        format_cell_range(ws, cell, fmt)
+    # Create one range: D4:LAST4
+    start = col_letter(start_col_idx)
+    end = col_letter(num_cols - 1)
+    cell_range = f"{start}4:{end}4"
 
-    print(f"✅ Formatted row 4 from {col_letter(start_col_idx)} to {col_letter(num_cols - 1)} as dd-mm-yyyy")
+    fmt = CellFormat(numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
+    format_cell_range(ws, cell_range, fmt)  # <-- single API call
 
+    print(f"✅ Formatted row 4 range {cell_range} as dd-mm-yyyy")
 
 
 import string
