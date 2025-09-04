@@ -46,3 +46,14 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python Mt_21.py
+
+      - name: Run Zip_20.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python Zip_20.py
+
+      - name: Run Zip_21.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python Zip_21.py
+        
