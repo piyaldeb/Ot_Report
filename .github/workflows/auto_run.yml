@@ -56,4 +56,9 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python Zip_21.py
+      
+      - name: Run Zip_c.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python Zip_c.py
         
