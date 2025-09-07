@@ -22,20 +22,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pandas gspread oauth2client openpyxl gspread-formatting
+          pip install requests pandas gspread oauth2client openpyxl gspread-formatting python-dotenv
 
       - name: Write Google credentials.json (Base64 decode)
         shell: bash
         run: |
           echo "${{ secrets.GCP_SA_JSON }}" | base64 -d > credentials.json
 
-      # Optional: export Odoo creds as env vars if your scripts read them
-      # - name: Export Odoo env (optional)
-      #   run: |
-      #     echo "ODOO_URL=${{ secrets.ODOO_URL }}" >> $GITHUB_ENV
-      #     echo "ODOO_DB=${{ secrets.ODOO_DB }}" >> $GITHUB_ENV
-      #     echo "ODOO_USERNAME=${{ secrets.ODOO_USERNAME }}" >> $GITHUB_ENV
-      #     echo "ODOO_PASSWORD=${{ secrets.ODOO_PASSWORD }}" >> $GITHUB_ENV
+      - name: Set Odoo environment variables from secrets
+        run: |
+          echo "ODOO_URL=${{ secrets.ODOO_URL }}" >> $GITHUB_ENV
+          echo "ODOO_DB=${{ secrets.ODOO_DB }}" >> $GITHUB_ENV
+          echo "ODOO_USERNAME=${{ secrets.ODOO_USERNAME }}" >> $GITHUB_ENV
+          echo "ODOO_PASSWORD=${{ secrets.ODOO_PASSWORD }}" >> $GITHUB_ENV
 
       - name: Run Mt_20.py
         env:
@@ -56,9 +55,8 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: python Zip_21.py
-      
+
       - name: Run Zip_c.py
         env:
           PYTHONUNBUFFERED: "1"
         run: python Zip_c.py
-        

@@ -9,11 +9,16 @@ import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# ========= CONFIG ==========
-ODOO_URL = "https://taps.odoo.com"
-USERNAME = "supply.chain3@texzipperbd.com"
-PASSWORD = "@Shanto@86"
-DB = "masbha-tex-taps-master-2093561"
+from dotenv import load_dotenv
+load_dotenv()
+
+import os
+
+ODOO_URL = os.getenv("ODOO_URL")
+USERNAME = os.getenv("ODOO_USERNAME")
+PASSWORD = os.getenv("ODOO_PASSWORD")
+DB = os.getenv("ODOO_DB")
+
 
 MODEL = "attendance.pdf.report"
 REPORT_BUTTON_METHOD = "action_generate_xlsx_report"
