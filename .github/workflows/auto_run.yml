@@ -5,7 +5,10 @@ on:
   schedule:
     # Runs daily at 02:10 Asia/Dhaka (UTC+06) => 20:10 UTC previous day
     - cron: "10 20 * * *"
-
+     # Runs daily at 10:00 AM Asia/Dhaka (04:00 UTC)
+    - cron: "0 4 * * *"
+    # Runs daily at 11:00 AM Asia/Dhaka (05:00 UTC)
+    - cron: "0 5 * * *"
 jobs:
   run-both:
     runs-on: ubuntu-latest
