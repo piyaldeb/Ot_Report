@@ -287,7 +287,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
     # --- Prepare values ---
     values = [list(df.columns)] + df.values.tolist()
 
-    # Overwrite all in one go
+    # Overwrite all data in one go
     ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
     print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
 
@@ -320,7 +320,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
         )
         print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
 
-    # --- Format row 4 (D4:last) as date using batch_update ---
+    # --- Format row 4 (D4:last) as date (single batch_update) ---
     end_col = col_letter(num_cols - 1)
     requests = [{
         "repeatCell": {
@@ -341,6 +341,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
     }]
     sh.batch_update({"requests": requests})
     print(f"✅ Formatted row 4 D4:{end_col}4 as dd-mm-yyyy")
+
 
     # Format row 4 as date (single formatting call, retried inside)
     format_row4_as_date(ws, num_cols)
