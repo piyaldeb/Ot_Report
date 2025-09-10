@@ -265,30 +265,33 @@ def paste_to_google_sheet(df: pd.DataFrame):
     # Limit to first 80 rows
     df = df.head(80)
 
-    # --- Convert row 4 (index 3) to string safely, suppress pandas UserWarning ---
+    # --- Convert row 4 (index 3) to string safely ---
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
-        df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
+        df_row4 = pd.to_datetime(df.iloc[3], errors="coerce")
 
-    # Format to text like '01-Aug-25' or empty
-    df_row4 = df_row4.dt.strftime('%d-%b-%y').fillna("")
+    df_row4 = df_row4.dt.strftime("%d-%b-%y").fillna("")
     df.iloc[3] = df_row4
 
-    # Replace inf/-inf and remaining NaN in entire DataFrame
-    df = df.replace([float('inf'), float('-inf')], "").where(pd.notnull(df), "")
+    # --- Replace inf/-inf and remaining NaN ---
+    df = df.replace([float("inf"), float("-inf")], "").where(pd.notnull(df), "")
 
-    # Authorize Google Sheets
+    # --- Authorize Google Sheets ---
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
     sh = gc.open_by_url(GOOGLE_SHEET_URL)
     ws = sh.worksheet(SHEET_NAME)
 
-    # Prepare values (header + rows)
+    # --- Prepare values ---
     values = [list(df.columns)] + df.values.tolist()
 
-    # Prepare formula rows (rows 84 and 85), starting from column D (index 3)
+    # Overwrite all in one go
+    ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
+    print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
+
+    # --- Prepare formulas ---
     start_col_idx = 3
     num_cols = df.shape[1]
 
@@ -309,45 +312,35 @@ def paste_to_google_sheet(df: pd.DataFrame):
         for c in range(start_col_idx, num_cols)
     ]
 
-    # Build batch_update payload: write data and formulas in ONE batch request
-    data_updates = []
-    last_col = col_letter(num_cols - 1)
-    last_row = len(values)
-    data_updates.append({
-        "range": f"A1:{last_col}{last_row}",
-        "values": values
-    })
-
     if formulas_row_84:
-        formulas_range = f"D84:{col_letter(start_col_idx + len(formulas_row_84) - 1)}85"
-        data_updates.append({
-            "range": formulas_range,
-            "values": [formulas_row_84, formulas_row_85]
-        })
+        ws.update(
+            values=[formulas_row_84, formulas_row_85],
+            range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}85",
+            value_input_option="USER_ENTERED"
+        )
+        print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
 
-    body = {
-        "valueInputOption": "USER_ENTERED",
-        "data": data_updates
-    }
-
-    # Retry wrapper for batch_update to handle occasional 429s
-    max_retries = 5
-    for attempt in range(1, max_retries + 1):
-        try:
-            sh.batch_update(body)
-            print(f"✅ Pasted {len(df)} rows + formulas in one batch to Google Sheet → {SHEET_NAME}")
-            break
-        except APIError as e:
-            err_text = str(e)
-            if "429" in err_text or "quota" in err_text.lower():
-                wait = 2 ** attempt
-                print(f"⚠️ batch_update rate-limited (attempt {attempt}). Sleeping {wait}s and retrying...")
-                time.sleep(wait)
-                continue
-            else:
-                raise
-    else:
-        raise RuntimeError("Failed to batch_update after retries due to rate limiting.")
+    # --- Format row 4 (D4:last) as date using batch_update ---
+    end_col = col_letter(num_cols - 1)
+    requests = [{
+        "repeatCell": {
+            "range": {
+                "sheetId": ws.id,
+                "startRowIndex": 3,  # row 4 (0-based)
+                "endRowIndex": 4,
+                "startColumnIndex": 3,  # col D
+                "endColumnIndex": num_cols
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "numberFormat": {"type": "DATE", "pattern": "dd-mm-yyyy"}
+                }
+            },
+            "fields": "userEnteredFormat.numberFormat"
+        }
+    }]
+    sh.batch_update({"requests": requests})
+    print(f"✅ Formatted row 4 D4:{end_col}4 as dd-mm-yyyy")
 
     # Format row 4 as date (single formatting call, retried inside)
     format_row4_as_date(ws, num_cols)
