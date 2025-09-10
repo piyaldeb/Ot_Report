@@ -1,43 +1,45 @@
 import os
 import json
 import re
-import time
-from datetime import datetime, timedelta
+from datetime import datetime ,timedelta
 
 import requests
 import pandas as pd
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-from gspread.exceptions import APIError
+
+# ========= CONFIG ==========
 from dotenv import load_dotenv
-
-# gspread_formatting for row formatting
-from gspread_formatting import format_cell_range, CellFormat, NumberFormat
-
 load_dotenv()
 
-# ========== CONFIG ==========
+import os
+
 ODOO_URL = os.getenv("ODOO_URL")
 USERNAME = os.getenv("ODOO_USERNAME")
 PASSWORD = os.getenv("ODOO_PASSWORD")
 DB = os.getenv("ODOO_DB")
 
+
 MODEL = "attendance.pdf.report"
 REPORT_BUTTON_METHOD = "action_generate_xlsx_report"
 
-REPORT_TYPE = "ot_analysis"
+REPORT_TYPE = "ot_analysis"        # e.g. "ot_analysis", "job_card"
 DATE_FROM = "2025-08-01"
 DATE_TO = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 
-company_id = 4
+# Company context (kept even though we’re using category mode)
+company_id = 1   # 1 = Zipper, 3 = Metal Trims
 
-GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1W9qXHRPrSffHfcQvBxrAK2fTAqne5ohqf0tIn1oMujM/edit?gid=1647682121#gid=1647682121"
-SHEET_NAME = "Sheet3"
-SERVICE_ACCOUNT_JSON = "credentials.json"
+# ===== Google Sheets =====
+GOOGLE_SHEET_URL     = "https://docs.google.com/spreadsheets/d/1W9qXHRPrSffHfcQvBxrAK2fTAqne5ohqf0tIn1oMujM/edit?gid=1647682121#gid=1647682121"
+SHEET_NAME           = "Sheet2"
+SERVICE_ACCOUNT_JSON = "credentials.json"  # this file will exist in Actions
 
+# Local output
 DOWNLOADED_XLSX = f"{REPORT_TYPE}_{DATE_FROM}_to_{DATE_TO}_cat20.xlsx"
 
+# ========= START SESSION ==========
 session = requests.Session()
 session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
 
@@ -101,7 +103,7 @@ def onchange(uid):
 def web_save(uid):
     url = f"{ODOO_URL}/web/dataset/call_kw/{MODEL}/web_save"
     payload = {
-        "id": 35,
+        "id": 3,
         "jsonrpc": "2.0",
         "method": "call",
         "params": {
@@ -114,10 +116,10 @@ def web_save(uid):
                 "is_company": False,
                 "atten_type": False,
                 "types": False,
-                "mode_type": "category",
+                "mode_type": "category",     # category mode per your JSON
                 "employee_id": False,
-                "mode_company_id": False,
-                "category_id": 42,
+                "mode_company_id": False,    # cleared in category mode
+                "category_id": 30,           # B-Worker
                 "department_id": False,
                 "company_all": "allcompany"
             }],
@@ -183,7 +185,7 @@ def download_xlsx(uid, csrf_token, wizard_id, report_name):
         "mode_type": "category",
         "mode_company_id": False,
         "department_id": False,
-        "category_id": 42,
+        "category_id": 30,
         "employee_id": False,
         "report_type": REPORT_TYPE,
         "atten_type": False,
@@ -223,14 +225,24 @@ def download_xlsx(uid, csrf_token, wizard_id, report_name):
 
 
 def read_second_tab(xlsx_path: str) -> pd.DataFrame:
-    df = pd.read_excel(xlsx_path, sheet_name=1)
+    """
+    Reads ONLY the 2nd worksheet (index=1) from the downloaded Excel file.
+    """
+    df = pd.read_excel(xlsx_path, sheet_name=1)  # 0-based index → second tab
     print(f"✅ Loaded 2nd tab into DataFrame: {df.shape}")
     return df
 
+from gspread_formatting import format_cell_range, CellFormat, NumberFormat
 
-def format_row4_as_date(ws, num_cols, max_retries=5):
-    start_col_idx = 3  # column D
+def format_row4_as_date(ws, num_cols):
+    """
+    Format row 4 from column D to the last column with data as date dd-mm-yyyy.
+    Does it in a single API request instead of per-cell.
+    """
+    start_col_idx = 3  # D = index 3
+
     def col_letter(idx):
+        """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
         idx += 1
         while idx > 0:
@@ -238,61 +250,54 @@ def format_row4_as_date(ws, num_cols, max_retries=5):
             result = chr(65 + remainder) + result
         return result
 
+    # Create one range: D4:LAST4
     start = col_letter(start_col_idx)
     end = col_letter(num_cols - 1)
     cell_range = f"{start}4:{end}4"
 
     fmt = CellFormat(numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
+    format_cell_range(ws, cell_range, fmt)  # <-- single API call
 
-    # Retry wrapper for transient 429s
-    for attempt in range(1, max_retries + 1):
-        try:
-            format_cell_range(ws, cell_range, fmt)
-            print(f"✅ Formatted row 4 range {cell_range} as dd-mm-yyyy")
-            return
-        except APIError as e:
-            # If rate limit, backoff and retry
-            err_text = str(e)
-            if "429" in err_text or "quota" in err_text.lower():
-                wait = 2 ** attempt
-                print(f"⚠️ format_cell_range rate-limited (attempt {attempt}). Sleeping {wait}s and retrying...")
-                time.sleep(wait)
-                continue
-            raise
+    print(f"✅ Formatted row 4 range {cell_range} as dd-mm-yyyy")
 
+
+import string
 
 def paste_to_google_sheet(df: pd.DataFrame):
     # Limit to first 80 rows
     df = df.head(80)
 
-    # --- Convert row 4 (index 3) to string safely, suppress pandas UserWarning ---
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=UserWarning)
-        df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
-
-    # Format to text like '01-Aug-25' or empty
-    df_row4 = df_row4.dt.strftime('%d-%b-%y').fillna("")
+    # --- Convert row 4 (index 3) to string safely ---
+    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
+    df_row4 = df_row4.dt.strftime('%d-%b-%y')              # convert Timestamps to string
+    df_row4 = df_row4.fillna("")                           # replace NaT with empty string
     df.iloc[3] = df_row4
 
-    # Replace inf/-inf and remaining NaN in entire DataFrame
+    # --- Replace inf/-inf and remaining NaN in entire DataFrame ---
     df = df.replace([float('inf'), float('-inf')], "").where(pd.notnull(df), "")
 
-    # Authorize Google Sheets
+    # --- Authorize Google Sheets ---
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
-    sh = gc.open_by_url(GOOGLE_SHEET_URL)
-    ws = sh.worksheet(SHEET_NAME)
+    ws = gc.open_by_url(GOOGLE_SHEET_URL).worksheet(SHEET_NAME)
 
-    # Prepare values (header + rows)
+    # Clear sheet
+    ws.clear()
+
+    # Prepare values
     values = [list(df.columns)] + df.values.tolist()
 
-    # Prepare formula rows (rows 84 and 85), starting from column D (index 3)
+    # Update Google Sheet
+    ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
+    print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
+
+    # --- Apply formulas in rows 84 and 85 starting from D ---
     start_col_idx = 3
     num_cols = df.shape[1]
 
     def col_letter(idx):
+        """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
         idx += 1
         while idx > 0:
@@ -309,58 +314,36 @@ def paste_to_google_sheet(df: pd.DataFrame):
         for c in range(start_col_idx, num_cols)
     ]
 
-    # Build batch_update payload: write data and formulas in ONE batch request
-    data_updates = []
-    last_col = col_letter(num_cols - 1)
-    last_row = len(values)
-    data_updates.append({
-        "range": f"A1:{last_col}{last_row}",
-        "values": values
-    })
-
     if formulas_row_84:
-        formulas_range = f"D84:{col_letter(start_col_idx + len(formulas_row_84) - 1)}85"
-        data_updates.append({
-            "range": formulas_range,
-            "values": [formulas_row_84, formulas_row_85]
-        })
+        ws.update(
+            values=[formulas_row_84],
+            range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}84",
+            value_input_option="USER_ENTERED"
+        )
+        ws.update(
+            values=[formulas_row_85],
+            range_name=f"D85:{col_letter(start_col_idx + len(formulas_row_85)-1)}85",
+            value_input_option="USER_ENTERED"
+        )
+        print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
 
-    body = {
-        "valueInputOption": "USER_ENTERED",
-        "data": data_updates
-    }
-
-    # Retry wrapper for batch_update to handle occasional 429s
-    max_retries = 5
-    for attempt in range(1, max_retries + 1):
-        try:
-            sh.batch_update(body)
-            print(f"✅ Pasted {len(df)} rows + formulas in one batch to Google Sheet → {SHEET_NAME}")
-            break
-        except APIError as e:
-            err_text = str(e)
-            if "429" in err_text or "quota" in err_text.lower():
-                wait = 2 ** attempt
-                print(f"⚠️ batch_update rate-limited (attempt {attempt}). Sleeping {wait}s and retrying...")
-                time.sleep(wait)
-                continue
-            else:
-                raise
-    else:
-        raise RuntimeError("Failed to batch_update after retries due to rate limiting.")
-
-    # Format row 4 as date (single formatting call, retried inside)
+    # --- Format row 4 as date in Google Sheets ---
     format_row4_as_date(ws, num_cols)
+
+
+
+
 
 
 def main():
     uid = login()
     csrf = get_csrf()
-    onchange(uid)
+    onchange(uid)         # not strictly required, but keeps parity with UI
     wiz_id = web_save(uid)
     report_name = call_button(uid, wiz_id)
     xlsx_path = download_xlsx(uid, csrf, wiz_id, report_name)
 
+    # Read 2nd tab and paste to Google Sheets
     df_tab2 = read_second_tab(xlsx_path)
     paste_to_google_sheet(df_tab2)
 
