@@ -261,7 +261,7 @@ def format_row4_as_date(ws, num_cols, max_retries=5):
             raise
 
 
-def paste_to_google_sheet(df: pd.DataFrame, sleep_time=10):
+def paste_to_google_sheet(df: pd.DataFrame, sleep_time=5, batch_size=20):
     # Limit to first 80 rows
     df = df.head(80)
     time.sleep(sleep_time)
@@ -287,16 +287,8 @@ def paste_to_google_sheet(df: pd.DataFrame, sleep_time=10):
 
     # --- Prepare values ---
     values = [list(df.columns)] + df.values.tolist()
-    time.sleep(sleep_time)
 
-    # Overwrite all data in one go
-    ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
-    print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
-
-    # --- Prepare formulas ---
-    start_col_idx = 3
-    num_cols = df.shape[1]
-
+    # --- Helper: column letter ---
     def col_letter(idx):
         result = ""
         idx += 1
@@ -305,6 +297,32 @@ def paste_to_google_sheet(df: pd.DataFrame, sleep_time=10):
             result = chr(65 + rem) + result
         return result
 
+    # --- Batch update to avoid 429 ---
+    total_rows = len(values)
+    for start in range(0, total_rows, batch_size):
+        batch = values[start:start+batch_size]
+        start_row = start + 1  # Google Sheets is 1-indexed
+        end_row = start_row + len(batch) - 1
+        end_col = col_letter(len(batch[0])-1)
+        range_name = f"A{start_row}:{end_col}{end_row}"
+
+        for attempt in range(1, 6):  # retry up to 5 times
+            try:
+                ws.update(values=batch, range_name=range_name, value_input_option="USER_ENTERED")
+                print(f"✅ Updated rows {start_row}-{end_row}")
+                break
+            except APIError as e:
+                if "429" in str(e) or "quota" in str(e).lower():
+                    wait = 2 ** attempt
+                    print(f"⚠️ Rate limited. Sleeping {wait}s (attempt {attempt})...")
+                    time.sleep(wait)
+                else:
+                    raise
+        time.sleep(sleep_time)
+
+    # --- Apply formulas in rows 84 and 85 ---
+    start_col_idx = 3
+    num_cols = df.shape[1]
     formulas_row_84 = [
         f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}80),2)=1)*{col_letter(c)}7:{col_letter(c)}80)"
         for c in range(start_col_idx, num_cols)
@@ -314,40 +332,20 @@ def paste_to_google_sheet(df: pd.DataFrame, sleep_time=10):
         for c in range(start_col_idx, num_cols)
     ]
 
-    if formulas_row_84:
-        ws.update(
-            values=[formulas_row_84, formulas_row_85],
-            range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}85",
-            value_input_option="USER_ENTERED"
-        )
-        print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
-        time.sleep(sleep_time)
+    # Batch formulas
+    ws.update(values=[formulas_row_84], 
+              range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}84",
+              value_input_option="USER_ENTERED")
+    time.sleep(sleep_time)
+    ws.update(values=[formulas_row_85],
+              range_name=f"D85:{col_letter(start_col_idx + len(formulas_row_85)-1)}85",
+              value_input_option="USER_ENTERED")
+    print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
+    time.sleep(sleep_time)
 
-    # --- Format row 4 (D4:last) as date (single batch_update) ---
-    end_col = col_letter(num_cols - 1)
-    requests = [{
-        "repeatCell": {
-            "range": {
-                "sheetId": ws.id,
-                "startRowIndex": 3,  # row 4 (0-based)
-                "endRowIndex": 4,
-                "startColumnIndex": 3,  # col D
-                "endColumnIndex": num_cols
-            },
-            "cell": {
-                "userEnteredFormat": {
-                    "numberFormat": {"type": "DATE", "pattern": "dd-mm-yyyy"}
-                }
-            },
-            "fields": "userEnteredFormat.numberFormat"
-        }
-    }]
-    sh.batch_update({"requests": requests})
-    print(f"✅ Formatted row 4 D4:{end_col}4 as dd-mm-yyyy")
-
-
-    # Format row 4 as date (single formatting call, retried inside)
+    # --- Format row 4 as date ---
     format_row4_as_date(ws, num_cols)
+
 
 
 def main():

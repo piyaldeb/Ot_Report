@@ -264,17 +264,16 @@ def format_row4_as_date(ws, num_cols):
 
 import string
 
-def paste_to_google_sheet(df: pd.DataFrame , sleep_time=10):
+def paste_to_google_sheet(df: pd.DataFrame, sleep_time=10, batch_size=20):
     # Limit to first 80 rows
     df = df.head(80)
 
     # --- Convert row 4 (index 3) to string safely ---
-    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
-    df_row4 = df_row4.dt.strftime('%d-%b-%y')              # convert Timestamps to string
-    df_row4 = df_row4.fillna("")                           # replace NaT with empty string
+    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')
+    df_row4 = df_row4.dt.strftime('%d-%b-%y').fillna("")
     df.iloc[3] = df_row4
 
-    # --- Replace inf/-inf and remaining NaN in entire DataFrame ---
+    # --- Replace inf/-inf and remaining NaN ---
     df = df.replace([float('inf'), float('-inf')], "").where(pd.notnull(df), "")
 
     # --- Authorize Google Sheets ---
@@ -287,20 +286,11 @@ def paste_to_google_sheet(df: pd.DataFrame , sleep_time=10):
     ws.clear()
     time.sleep(sleep_time)
 
-    # Prepare values
+    # --- Prepare values ---
     values = [list(df.columns)] + df.values.tolist()
 
-    # Update Google Sheet
-    ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
-    print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
-    time.sleep(sleep_time)
-
-    # --- Apply formulas in rows 84 and 85 starting from D ---
-    start_col_idx = 3
-    num_cols = df.shape[1]
-
+    # --- Helper: convert 0-based index to column letter ---
     def col_letter(idx):
-        """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
         idx += 1
         while idx > 0:
@@ -308,6 +298,21 @@ def paste_to_google_sheet(df: pd.DataFrame , sleep_time=10):
             result = chr(65 + rem) + result
         return result
 
+    # --- Batch update to avoid 429 ---
+    total_rows = len(values)
+    for start in range(0, total_rows, batch_size):
+        batch = values[start:start+batch_size]
+        start_row = start + 1  # Google Sheets is 1-indexed
+        end_row = start_row + len(batch) - 1
+        end_col = col_letter(len(batch[0])-1)
+        range_name = f"A{start_row}:{end_col}{end_row}"
+        ws.update(values=batch, range_name=range_name, value_input_option="USER_ENTERED")
+        print(f"✅ Updated rows {start_row} to {end_row}")
+        time.sleep(sleep_time)
+
+    # --- Apply formulas in rows 84 and 85 starting from D ---
+    start_col_idx = 3
+    num_cols = df.shape[1]
     formulas_row_84 = [
         f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}80),2)=1)*{col_letter(c)}7:{col_letter(c)}80)"
         for c in range(start_col_idx, num_cols)
@@ -318,21 +323,19 @@ def paste_to_google_sheet(df: pd.DataFrame , sleep_time=10):
     ]
 
     if formulas_row_84:
-        ws.update(
-            values=[formulas_row_84],
-            range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}84",
-            value_input_option="USER_ENTERED"
-        )
-        ws.update(
-            values=[formulas_row_85],
-            range_name=f"D85:{col_letter(start_col_idx + len(formulas_row_85)-1)}85",
-            value_input_option="USER_ENTERED"
-        )
-        print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
+        ws.update(values=[formulas_row_84], 
+                  range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}84",
+                  value_input_option="USER_ENTERED")
         time.sleep(sleep_time)
+        ws.update(values=[formulas_row_85],
+                  range_name=f"D85:{col_letter(start_col_idx + len(formulas_row_85)-1)}85",
+                  value_input_option="USER_ENTERED")
+        time.sleep(sleep_time)
+        print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
 
-    # --- Format row 4 as date in Google Sheets ---
+    # --- Format row 4 (D4:last) as date ---
     format_row4_as_date(ws, num_cols)
+    print("✅ Finished pasting and formatting Google Sheet")
 
 
 
