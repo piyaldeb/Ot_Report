@@ -261,9 +261,10 @@ def format_row4_as_date(ws, num_cols, max_retries=5):
             raise
 
 
-def paste_to_google_sheet(df: pd.DataFrame):
+def paste_to_google_sheet(df: pd.DataFrame, sleep_time=10):
     # Limit to first 80 rows
     df = df.head(80)
+    time.sleep(sleep_time)
 
     # --- Convert row 4 (index 3) to string safely ---
     import warnings
@@ -286,6 +287,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
 
     # --- Prepare values ---
     values = [list(df.columns)] + df.values.tolist()
+    time.sleep(sleep_time)
 
     # Overwrite all data in one go
     ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
@@ -319,6 +321,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
             value_input_option="USER_ENTERED"
         )
         print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
+        time.sleep(sleep_time)
 
     # --- Format row 4 (D4:last) as date (single batch_update) ---
     end_col = col_letter(num_cols - 1)

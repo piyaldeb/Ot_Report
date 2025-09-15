@@ -5,6 +5,7 @@ from datetime import datetime ,timedelta
 
 import requests
 import pandas as pd
+import time
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -263,7 +264,7 @@ def format_row4_as_date(ws, num_cols):
 
 import string
 
-def paste_to_google_sheet(df: pd.DataFrame):
+def paste_to_google_sheet(df: pd.DataFrame , sleep_time=10):
     # Limit to first 80 rows
     df = df.head(80)
 
@@ -284,6 +285,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
 
     # Clear sheet
     ws.clear()
+    time.sleep(sleep_time)
 
     # Prepare values
     values = [list(df.columns)] + df.values.tolist()
@@ -291,6 +293,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
     # Update Google Sheet
     ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
     print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
+    time.sleep(sleep_time)
 
     # --- Apply formulas in rows 84 and 85 starting from D ---
     start_col_idx = 3
@@ -326,6 +329,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
             value_input_option="USER_ENTERED"
         )
         print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
+        time.sleep(sleep_time)
 
     # --- Format row 4 as date in Google Sheets ---
     format_row4_as_date(ws, num_cols)
