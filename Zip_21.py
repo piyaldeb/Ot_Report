@@ -264,7 +264,9 @@ def format_row4_as_date(ws, num_cols):
 
 import string
 
-def paste_to_google_sheet(df: pd.DataFrame, sleep_time=5):
+import random
+
+def paste_to_google_sheet(df: pd.DataFrame, sleep_time=5, batch_size=20, max_retries=5):
     # Limit to first 80 rows
     df = df.head(80)
 
@@ -282,20 +284,23 @@ def paste_to_google_sheet(df: pd.DataFrame, sleep_time=5):
     gc = gspread.authorize(creds)
     ws = gc.open_by_url(GOOGLE_SHEET_URL).worksheet(SHEET_NAME)
 
-    # --- Clear sheet in one call ---
-    ws.batch_clear(["A:ZZ"])
+    # --- Clear sheet safely with retry ---
+    for attempt in range(max_retries):
+        try:
+            ws.clear()
+            break
+        except gspread.exceptions.APIError as e:
+            if "429" in str(e) and attempt < max_retries - 1:
+                wait_time = sleep_time * (2 ** attempt) + random.uniform(0, 2)
+                print(f"⚠️ Clear hit quota, retrying in {wait_time:.1f}s...")
+                time.sleep(wait_time)
+            else:
+                raise
 
     # --- Prepare values ---
     values = [list(df.columns)] + df.values.tolist()
 
-    # --- Push ALL data in one request ---
-    end_col = chr(65 + len(values[0]) - 1)  # crude A..Z only
-    ws.update(values=values, range_name=f"A1:{end_col}{len(values)}", value_input_option="USER_ENTERED")
-
-    # --- Apply formulas in rows 84 & 85 starting from D in one request ---
-    start_col_idx = 3
-    num_cols = df.shape[1]
-
+    # --- Helper: convert 0-based index to column letter (supports > Z) ---
     def col_letter(idx):
         result = ""
         idx += 1
@@ -303,6 +308,32 @@ def paste_to_google_sheet(df: pd.DataFrame, sleep_time=5):
             idx, rem = divmod(idx - 1, 26)
             result = chr(65 + rem) + result
         return result
+
+    # --- Batch update with retry ---
+    total_rows = len(values)
+    for start in range(0, total_rows, batch_size):
+        batch = values[start:start+batch_size]
+        start_row = start + 1
+        end_row = start_row + len(batch) - 1
+        end_col = col_letter(len(batch[0]) - 1)
+        range_name = f"A{start_row}:{end_col}{end_row}"
+
+        for attempt in range(max_retries):
+            try:
+                ws.update(values=batch, range_name=range_name, value_input_option="USER_ENTERED")
+                print(f"✅ Updated rows {start_row} to {end_row}")
+                break
+            except gspread.exceptions.APIError as e:
+                if "429" in str(e) and attempt < max_retries - 1:
+                    wait_time = sleep_time * (2 ** attempt) + random.uniform(0, 2)
+                    print(f"⚠️ Update hit quota (rows {start_row}-{end_row}), retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                else:
+                    raise
+
+    # --- Apply formulas in rows 84 & 85 starting from D with retry ---
+    start_col_idx = 3
+    num_cols = df.shape[1]
 
     formulas_row_84 = [
         f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}80),2)=1)*{col_letter(c)}7:{col_letter(c)}80)"
@@ -314,16 +345,29 @@ def paste_to_google_sheet(df: pd.DataFrame, sleep_time=5):
     ]
 
     if formulas_row_84:
-        ws.update(
-            values=[formulas_row_84, formulas_row_85],
-            range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84) - 1)}85",
-            value_input_option="USER_ENTERED",
-        )
+        formulas_range = f"D84:{col_letter(start_col_idx + len(formulas_row_84) - 1)}85"
+        for attempt in range(max_retries):
+            try:
+                ws.update(
+                    values=[formulas_row_84, formulas_row_85],
+                    range_name=formulas_range,
+                    value_input_option="USER_ENTERED",
+                )
+                print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
+                break
+            except gspread.exceptions.APIError as e:
+                if "429" in str(e) and attempt < max_retries - 1:
+                    wait_time = sleep_time * (2 ** attempt) + random.uniform(0, 2)
+                    print(f"⚠️ Formula update hit quota, retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                else:
+                    raise
 
     # --- Format row 4 (D4:last) as date ---
     format_row4_as_date(ws, num_cols)
 
     print("✅ Finished pasting and formatting Google Sheet")
+
 
 
 
