@@ -266,6 +266,9 @@ def format_row4_as_date(ws, num_cols):
 
 import string
 
+import time
+from gspread_formatting import CellFormat, NumberFormat, format_cell_range
+
 def paste_to_google_sheet(df: pd.DataFrame):
     # Limit to first 80 rows
     df = df.head(80)
@@ -285,22 +288,15 @@ def paste_to_google_sheet(df: pd.DataFrame):
     gc = gspread.authorize(creds)
     ws = gc.open_by_url(GOOGLE_SHEET_URL).worksheet(SHEET_NAME)
 
-    # Clear sheet
+    # --- Clear sheet ---
     ws.clear()
 
-    # Prepare values
-    values = [list(df.columns)] + df.values.tolist()
-
-    # Update Google Sheet
-    ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
-    print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
-
-    # --- Apply formulas in rows 84 and 85 starting from D ---
-    start_col_idx = 3
+    # --- Prepare values including formulas ---
+    start_col_idx = 3  # column D
     num_cols = df.shape[1]
 
+    # Column letter helper
     def col_letter(idx):
-        """Convert 0-based index to Excel-style letter (supports > Z)."""
         result = ""
         idx += 1
         while idx > 0:
@@ -308,6 +304,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
             result = chr(65 + rem) + result
         return result
 
+    # Prepare formulas
     formulas_row_84 = [
         f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}80),2)=1)*{col_letter(c)}7:{col_letter(c)}80)"
         for c in range(start_col_idx, num_cols)
@@ -317,21 +314,23 @@ def paste_to_google_sheet(df: pd.DataFrame):
         for c in range(start_col_idx, num_cols)
     ]
 
-    if formulas_row_84:
-        ws.update(
-            values=[formulas_row_84],
-            range_name=f"D84:{col_letter(start_col_idx + len(formulas_row_84)-1)}84",
-            value_input_option="USER_ENTERED"
-        )
-        ws.update(
-            values=[formulas_row_85],
-            range_name=f"D85:{col_letter(start_col_idx + len(formulas_row_85)-1)}85",
-            value_input_option="USER_ENTERED"
-        )
-        print("✅ Applied SUMPRODUCT formulas in rows 84 and 85")
+    # Combine all rows for batch update
+    values = [list(df.columns)] + df.values.tolist()  # main data
+    # Add formulas for rows 84 and 85 at the correct columns
+    row_84_full = [""] * start_col_idx + formulas_row_84
+    row_85_full = [""] * start_col_idx + formulas_row_85
+    values += [[""] * num_cols] * (84 - len(values))  # pad to row 84
+    values.append(row_84_full)
+    values.append(row_85_full)
 
-    # --- Format row 4 as date in Google Sheets ---
-    format_row4_as_date(ws, num_cols)
+    # --- Update everything at once ---
+    ws.update(values=values, range_name=f"A1:{col_letter(num_cols-1)}{len(values)}", value_input_option="USER_ENTERED")
+
+    # --- Format row 4 as date ---
+    fmt = CellFormat(numberFormat=NumberFormat(type="DATE", pattern="dd-mm-yyyy"))
+    format_cell_range(ws, f"D4:{col_letter(num_cols-1)}4", fmt)
+
+    print(f"✅ Pasted {len(df)} rows + formulas + formatting to Google Sheet → {SHEET_NAME}")
 
 
 
