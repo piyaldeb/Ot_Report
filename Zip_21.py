@@ -34,7 +34,7 @@ company_id = 1   # 1 = Zipper, 3 = Metal Trims
 
 # ===== Google Sheets =====
 GOOGLE_SHEET_URL     = "https://docs.google.com/spreadsheets/d/1W9qXHRPrSffHfcQvBxrAK2fTAqne5ohqf0tIn1oMujM/edit?gid=1647682121#gid=1647682121"
-SHEET_NAME           = "Sheet1"
+SHEET_NAME           = "Sheet2"
 SERVICE_ACCOUNT_JSON = "credentials.json"
 
 # Local output

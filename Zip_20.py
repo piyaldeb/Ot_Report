@@ -151,7 +151,7 @@ def web_save(uid):
                 "mode_type": "category",
                 "employee_id": False,
                 "mode_company_id": False,
-                "category_id": 31,
+                "category_id": 30,
                 "department_id": False,
                 "company_all": "allcompany"
             }],
