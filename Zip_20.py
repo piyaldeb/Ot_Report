@@ -294,20 +294,25 @@ import string
 import time
 from gspread_formatting import CellFormat, NumberFormat, format_cell_range
 
+import random, time
+import gspread
+from gspread_formatting import format_cell_range, CellFormat, NumberFormat
+from gspread.exceptions import APIError
+
 def paste_to_google_sheet(df: pd.DataFrame):
     # Limit to first 80 rows
     df = df.head(80)
 
-    # --- Convert row 4 (index 3) to string safely ---
-    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce')  # convert invalids to NaT
-    df_row4 = df_row4.dt.strftime('%d-%b-%y')              # convert Timestamps to string
-    df_row4 = df_row4.fillna("")                           # replace NaT with empty string
+    # --- Convert row 4 (index 3) to safe date strings ---
+    df_row4 = pd.to_datetime(df.iloc[3], errors='coerce', format="%Y-%m-%d")
+    df_row4 = df_row4.dt.strftime('%d-%b-%y')
+    df_row4 = df_row4.fillna("")
     df.iloc[3] = df_row4
 
-    # --- Replace inf/-inf and remaining NaN in entire DataFrame ---
+    # --- Clean inf / NaN ---
     df = df.replace([float('inf'), float('-inf')], "").where(pd.notnull(df), "")
 
-    # --- Authorize Google Sheets ---
+    # --- Authorize Sheets ---
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_JSON, scope)
     gc = gspread.authorize(creds)
@@ -316,11 +321,10 @@ def paste_to_google_sheet(df: pd.DataFrame):
     # --- Clear sheet ---
     ws.clear()
 
-    # --- Prepare values including formulas ---
-    start_col_idx = 3  # column D
+    # --- Prepare values ---
+    start_col_idx = 3
     num_cols = df.shape[1]
 
-    # Column letter helper
     def col_letter(idx):
         result = ""
         idx += 1
@@ -329,7 +333,7 @@ def paste_to_google_sheet(df: pd.DataFrame):
             result = chr(65 + rem) + result
         return result
 
-    # Prepare formulas
+    # Formulas
     formulas_row_84 = [
         f"=SUMPRODUCT((MOD(ROW({col_letter(c)}7:{col_letter(c)}80),2)=1)*{col_letter(c)}7:{col_letter(c)}80)"
         for c in range(start_col_idx, num_cols)
@@ -339,19 +343,37 @@ def paste_to_google_sheet(df: pd.DataFrame):
         for c in range(start_col_idx, num_cols)
     ]
 
-    # Combine all rows for batch update
-    values = [list(df.columns)] + df.values.tolist()  # main data
-    # Add formulas for rows 84 and 85 at the correct columns
+    values = [list(df.columns)] + df.values.tolist()
     row_84_full = [""] * start_col_idx + formulas_row_84
     row_85_full = [""] * start_col_idx + formulas_row_85
-    values += [[""] * num_cols] * (84 - len(values))  # pad to row 84
+    values += [[""] * num_cols] * (84 - len(values))
     values.append(row_84_full)
     values.append(row_85_full)
 
-    # --- Update everything at once ---
-    ws.update(values=values, range_name=f"A1:{col_letter(num_cols-1)}{len(values)}", value_input_option="USER_ENTERED")
+    # --- Helper: Safe batched update with retries ---
+    def safe_update(range_name, chunk, max_attempts=5):
+        for attempt in range(1, max_attempts + 1):
+            try:
+                ws.update(values=chunk, range_name=range_name, value_input_option="USER_ENTERED")
+                return
+            except APIError as e:
+                if "Quota exceeded" in str(e):
+                    wait = (2 ** (attempt - 1)) + random.uniform(0, 1)
+                    print(f"⚠️ Quota hit, retry {attempt}/{max_attempts} after {wait:.1f}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+        raise RuntimeError("Failed to update Google Sheets after retries.")
 
-    # --- Format row 4 as date ---
+    # --- Send in chunks of 200 rows ---
+    chunk_size = 200
+    for i in range(0, len(values), chunk_size):
+        chunk = values[i:i + chunk_size]
+        start_row = i + 1
+        end_row = i + len(chunk)
+        safe_update(f"A{start_row}:{col_letter(num_cols-1)}{end_row}", chunk)
+
+    # --- Date format for row 4 ---
     fmt = CellFormat(numberFormat=NumberFormat(type="DATE", pattern="dd-mm-yyyy"))
     format_cell_range(ws, f"D4:{col_letter(num_cols-1)}4", fmt)
 
