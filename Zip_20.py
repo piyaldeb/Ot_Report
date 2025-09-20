@@ -5,6 +5,8 @@ from datetime import datetime , timedelta
 import string
 import requests
 import pandas as pd
+from functools import wraps
+import random
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -176,6 +178,29 @@ def call_button(uid, wizard_id):
     print("✅ Report generated:", report_name)
     return report_name
 
+# ===== Retry Decorator =====
+def retry(max_attempts=5, base_delay=2, backoff=2, allowed_exceptions=(requests.RequestException,)):
+    """
+    Retry decorator with exponential backoff + jitter.
+    Retries on network errors and custom exceptions.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            attempt = 1
+            while attempt <= max_attempts:
+                try:
+                    return func(*args, **kwargs)
+                except allowed_exceptions as e:
+                    wait_time = base_delay * (backoff ** (attempt - 1))
+                    wait_time = wait_time + random.uniform(0, 1)  # jitter
+                    print(f"⚠️ {func.__name__} failed (attempt {attempt}/{max_attempts}): {e}")
+                    if attempt == max_attempts:
+                        raise
+                    time.sleep(wait_time)
+                    attempt += 1
+        return wrapper
+    return decorator
 
 def download_xlsx(uid, csrf_token, wizard_id, report_name):
     download_url = f"{ODOO_URL}/report/download"
