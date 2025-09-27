@@ -336,15 +336,15 @@ def paste_to_google_sheet(df: pd.DataFrame):
     ]
 
     if formulas_row_51:
-        safe_call(ws.update(
+        safe_call(ws.update,
             values=[formulas_row_51],
             range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51",
-            value_input_option="USER_ENTERED")
+            value_input_option="USER_ENTERED"
         )
-        safe_call(ws.update(
+        safe_call(ws.update,
             values=[formulas_row_52],
             range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52",
-            value_input_option="USER_ENTERED")
+            value_input_option="USER_ENTERED"
         )
         print("✅ Applied SUMPRODUCT formulas in rows 51 and 52")
 
