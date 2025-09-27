@@ -148,6 +148,22 @@ def web_save(uid):
     print("✅ Wizard saved, ID =", wizard_id)
     return wizard_id
 
+import time
+import random
+from gspread.exceptions import APIError
+
+def safe_call(func, *args, retries=5, **kwargs):
+    for attempt in range(1, retries+1):
+        try:
+            return func(*args, **kwargs)
+        except APIError as e:
+            if "429" in str(e):  # quota exceeded
+                sleep_time = min(2**attempt + random.random(), 60)
+                print(f"⚠️ Quota exceeded. Retry {attempt}/{retries} in {sleep_time:.1f}s")
+                time.sleep(sleep_time)
+            else:
+                raise
+    raise RuntimeError("❌ Max retries exceeded for Google Sheets API call")
 
 def call_button(uid, wizard_id):
     url = f"{ODOO_URL}/web/dataset/call_button"
@@ -231,33 +247,41 @@ def read_second_tab(xlsx_path: str) -> pd.DataFrame:
     print(f"✅ Loaded 2nd tab into DataFrame: {df.shape}")
     return df
 
-from gspread_formatting import format_cell_range, CellFormat, NumberFormat
+
+from gspread_formatting import CellFormat, NumberFormat, format_cell_range
 
 def format_row4_as_date(ws, num_cols):
     """
-    Format row 4 from column D to the last column with data as date dd-mm-yyyy.
-    Does it in a single API request instead of per-cell.
+    Safely format row 4 from column D to the last column with data as date dd-mm-yyyy.
+    Done in one batch call instead of per-cell to avoid quota errors.
     """
-    start_col_idx = 3  # D = index 3
+    try:
+        def col_letter(idx):
+            """Convert 0-based index to Excel-style letter (supports > Z)."""
+            result = ""
+            idx += 1  # convert 0-based to 1-based
+            while idx > 0:
+                idx, remainder = divmod(idx - 1, 26)
+                result = chr(65 + remainder) + result
+            return result
 
-    def col_letter(idx):
-        """Convert 0-based index to Excel-style letter (supports > Z)."""
-        result = ""
-        idx += 1
-        while idx > 0:
-            idx, remainder = divmod(idx - 1, 26)
-            result = chr(65 + remainder) + result
-        return result
+        # Make sure there are enough columns
+        if num_cols <= 3:  
+            print("⚠️ Skipped: Not enough columns to format (need >= 4).")
+            return
 
-    # Create one range: D4:LAST4
-    start = col_letter(start_col_idx)
-    end = col_letter(num_cols - 1)
-    cell_range = f"{start}4:{end}4"
+        start_col = col_letter(3)         # D
+        end_col = col_letter(num_cols - 1)  # last column
+        cell_range = f"{start_col}4:{end_col}4"
 
-    fmt = CellFormat(numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
-    format_cell_range(ws, cell_range, fmt)  # <-- single API call
+        fmt = CellFormat(numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'))
+        format_cell_range(ws, cell_range, fmt)
 
-    print(f"✅ Formatted row 4 range {cell_range} as dd-mm-yyyy")
+        print(f"✅ Formatted row 4 from {start_col} to {end_col} as dd-mm-yyyy (single batch call)")
+
+    except Exception as e:
+        print(f"❌ Failed to format row 4: {e}")
+
 
 
 import string
@@ -282,13 +306,13 @@ def paste_to_google_sheet(df: pd.DataFrame):
     ws = gc.open_by_url(GOOGLE_SHEET_URL).worksheet(SHEET_NAME)
 
     # Clear sheet
-    ws.clear()
+    safe_call(ws.clear)
 
     # Prepare values
     values = [list(df.columns)] + df.values.tolist()
 
     # Update Google Sheet
-    ws.update(values=values, range_name="A1", value_input_option="USER_ENTERED")
+    safe_call(ws.update, values=values, range_name="A1", value_input_option="USER_ENTERED")
     print(f"✅ Pasted {len(df)} rows to Google Sheet → {SHEET_NAME}")
 
     # --- Apply formulas in rows 51 and 52 starting from D ---
@@ -314,15 +338,15 @@ def paste_to_google_sheet(df: pd.DataFrame):
     ]
 
     if formulas_row_51:
-        ws.update(
+        safe_call(ws.update(
             values=[formulas_row_51],
             range_name=f"D51:{col_letter(start_col_idx + len(formulas_row_51)-1)}51",
-            value_input_option="USER_ENTERED"
+            value_input_option="USER_ENTERED")
         )
-        ws.update(
+        safe_call(ws.update(
             values=[formulas_row_52],
             range_name=f"D52:{col_letter(start_col_idx + len(formulas_row_52)-1)}52",
-            value_input_option="USER_ENTERED"
+            value_input_option="USER_ENTERED")
         )
         print("✅ Applied SUMPRODUCT formulas in rows 51 and 52")
 

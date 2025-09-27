@@ -33,7 +33,7 @@ DATE_TO = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
 company_id = 4
 
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1W9qXHRPrSffHfcQvBxrAK2fTAqne5ohqf0tIn1oMujM/edit?gid=1647682121#gid=1647682121"
-SHEET_NAME = "Sheet3"
+SHEET_NAME = "Sheet3" #Contractor OT Analysis
 SERVICE_ACCOUNT_JSON = "credentials.json"
 
 DOWNLOADED_XLSX = f"{REPORT_TYPE}_{DATE_FROM}_to_{DATE_TO}_cat20.xlsx"
